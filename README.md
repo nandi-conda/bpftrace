@@ -6,7 +6,18 @@ without — as conda packages, and publishes them to the `nandi-testing` channel
 a distro package:
 
 ```sh
-pixi add --channel https://prefix.dev/nandi-testing bpftrace
+pixi add --channel conda-forge --channel https://prefix.dev/nandi-testing bpftrace
+```
+
+The channel order matters. `nandi-testing` also holds rebuilt copies of a few
+conda-forge names — `elfutils` 0.196 among them — and pixi uses strict channel
+priority, so conda-forge has to come first. With the channel in front, its
+`elfutils` shadows the 0.197 that `bpftrace` is pinned to and the solve fails
+with "elfutils 0.197 is excluded because of strict channel priority". In a
+`pixi.toml` that is:
+
+```toml
+channels = ["conda-forge", "https://prefix.dev/nandi-testing"]
 ```
 
 [GitHub Actions](.github/workflows/build.yaml) compiles both packages on every
