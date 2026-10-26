@@ -1,0 +1,4 @@
+# Build artifacts and the local pixi environment: everything here is rebuilt
+# by `pixi run build` (locally or in CI).
+/output/
+/.pixi/

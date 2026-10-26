@@ -1,0 +1,60 @@
+name: build
+
+# Everything is compiled here, not on a workstation: the two packages are built
+# in order (libbcc first, then bpftrace against it) and uploaded to the
+# nandi-testing channel on prefix.dev.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          cache: true
+          locked: true
+
+      # The recipes point CCACHE_DIR at /tmp (rattler-build recreates its build
+      # environment on every run) and the tasks pass --no-build-id so compiler
+      # command lines are stable, which is what makes these hits possible.
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/bpftrace-conda-ccache
+          key: ccache-${{ hashFiles('recipes/**', 'pixi.toml') }}
+          restore-keys: ccache-
+
+      - name: Build libbcc and bpftrace
+        run: pixi run build
+
+      # Proves the packaged run dependencies are complete: the binary is
+      # installed from ./output into a throwaway environment and executed.
+      - name: Smoke test the built packages
+        run: pixi run smoke
+
+      - name: Publish to prefix.dev/nandi-testing
+        if: github.event_name != 'pull_request'
+        env:
+          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}
+        run: |
+          if [ -z "${PREFIX_API_KEY}" ]; then
+            echo "::warning::PREFIX_API_KEY is not set, so the packages were built but not uploaded."
+            exit 0
+          fi
+          pixi run publish
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conda-packages
+          path: output/*/*.conda
+          if-no-files-found: warn

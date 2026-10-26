@@ -1,0 +1,97 @@
+# bpftrace, built against the libbcc from this project (see ../libbcc) rather
+# than a distro package. libbpf is not a conda package either; it is bpftrace's
+# vendored submodule, which rattler-build checks out.
+context:
+  version: "0.27.1"
+  bcc_version: "0.37.0"
+  llvm: "20.1"
+  llvm_major: "20"
+
+package:
+  name: bpftrace
+  version: ${{ version }}
+
+source:
+  git: https://github.com/bpftrace/bpftrace.git
+  tag: v${{ version }}
+
+build:
+  # Bump this when the recipe changes: the hash in the build string only covers
+  # the variant, so an edited recipe otherwise reuses the previous file name.
+  number: 0
+  string: llvm${{ llvm_major }}_${{ hash }}
+  dynamic_linking:
+    # Any library the binary links must be a declared run dependency; without
+    # this the build silently ships an unloadable package (libclang13 was the
+    # one that caught it out).
+    overlinking_behavior: error
+    overdepending_behavior: error
+  script:
+    file: build.sh
+    env:
+      # Absolute and outside the build env on purpose: rattler-build wipes the
+      # build env (HOME included) at the start of every run, and its strict env
+      # isolation does not forward an outer CCACHE_DIR. Pure cache -- deleting
+      # it only costs the next compile.
+      CCACHE_DIR: /tmp/bpftrace-conda-ccache
+      # LLVM's LLVMConfigVersion.cmake only accepts a request whose
+      # major.minor matches, so this must stay "20.1"-shaped, not "20".
+      LLVM_VERSION: ${{ llvm }}
+
+requirements:
+  build:
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - cmake
+    - ninja
+    - make
+    - pkg-config
+    - git
+    # Compiler cache, so a recipe edit does not recompile all 171 translation
+    # units from scratch (see CCACHE_DIR above and `--no-build-id` in pixi.toml).
+    - ccache
+  host:
+    - libbcc ${{ bcc_version }}.*
+    - llvmdev ${{ llvm }}.*
+    - clangdev ${{ llvm }}.*
+    - libllvm${{ llvm_major }}
+    - libclang-cpp${{ llvm }}
+    - elfutils
+    - cereal
+    - libpcap
+    - zlib
+    # libbfd/libopcodes enable disassembly of the generated BPF (HAVE_BFD_DISASM);
+    # they come from conda-forge's binutils and statically need libzstd.
+    - binutils
+    - zstd
+  run:
+    - libbcc ${{ bcc_version }}.*
+    - libllvm${{ llvm_major }}
+    - libclang-cpp${{ llvm }}
+    # bpftrace links the clang C API (libclang.so.13) next to libclang-cpp.
+    - libclang13
+    - elfutils
+    - libpcap
+    - zstd
+
+tests:
+  # `bpftrace --version` only succeeds when every shared library the binary
+  # needs (libbcc, libclang, libLLVM, libdw, libelf, libpcap, libzstd) loads.
+  # `bpftrace --info`, the deeper check, needs root (CAP_DAC_READ_SEARCH) and
+  # cannot run in a build.
+  - script:
+      - bpftrace --version
+      - bpftrace --help
+  - package_contents:
+      bin:
+        - bpftrace
+      files:
+        - share/bpftrace/tools/bashreadline.bt
+      strict: false
+
+about:
+  homepage: https://bpftrace.org
+  license: Apache-2.0
+  summary: High-level tracing language for Linux eBPF
+  repository: https://github.com/bpftrace/bpftrace
+  documentation: https://bpftrace.org/getting-started

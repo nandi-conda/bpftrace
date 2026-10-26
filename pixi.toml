@@ -1,0 +1,31 @@
+[workspace]
+name = "bpftrace-conda"
+description = "Build bpftrace, and the libbcc it requires, as conda packages and publish them to prefix.dev/nandi-testing"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64"]
+
+[dependencies]
+rattler-build = "*"
+
+[tasks]
+# libbcc is not on conda-forge and bpftrace hard-requires it, so it is built
+# first and then consumed from ./output as a local channel.
+#
+# --no-build-id gives the build directory a stable name, so every absolute path
+# in the compile command (host prefix, -fdebug-prefix-map) is identical between
+# runs. That is what lets the recipes' ccache hit; with the timestamped name the
+# command line differs on every attempt and nothing is ever reused. Cache
+# location and size: `ccache -s` (they are set in the recipes' build.env).
+# Deliberately no --skip-existing: `${{ hash }}` renders to a constant in this
+# rattler-build version, so a package built from an edited recipe gets the same
+# file name as the stale one and would be skipped instead of rebuilt.
+bcc = { cmd = "rattler-build build --recipe recipes/libbcc --output-dir output --no-build-id", description = "Build libbcc" }
+bpftrace = { cmd = "rattler-build build --recipe recipes/bpftrace --output-dir output --no-build-id -c file://$PIXI_PROJECT_ROOT/output -c conda-forge", description = "Build bpftrace against the libbcc in ./output" }
+build = { depends-on = ["bcc", "bpftrace"], description = "Build libbcc, then bpftrace" }
+
+# Installs the just-built packages from ./output into a throwaway environment and
+# runs the binary, which is what catches a run dependency missing from a recipe.
+smoke = { cmd = "pixi exec -c file://$PIXI_PROJECT_ROOT/output -c conda-forge --with bpftrace -- bpftrace --version", description = "Install the built packages into a scratch environment and run bpftrace" }
+
+# Needs write access to the channel: `pixi auth login prefix.dev`, or PREFIX_API_KEY.
+publish = { cmd = "pixi upload prefix --channel nandi-testing --skip-existing output/linux-64/libbcc-*.conda output/linux-64/bpftrace-*.conda", description = "Upload both packages to prefix.dev/nandi-testing" }

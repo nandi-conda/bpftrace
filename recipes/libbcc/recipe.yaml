@@ -1,0 +1,100 @@
+# libbcc: the C/C++ library half of iovisor/bcc.
+#
+# bpftrace hard-requires it -- find_package(LibBcc REQUIRED) for
+# bcc/bcc_syms.h, libbcc.so and libbcc_bpf.so -- and no conda channel provides
+# it, so it is packaged here before bpftrace. Only the libraries, headers and
+# pkg-config file are shipped: bcc's python bindings, tools, examples and
+# introspection helper are not needed by bpftrace.
+#
+# libbpf is NOT a separate package: bcc vendors it in src/cc/libbpf and
+# rattler-build checks out submodules, which is bcc's own default build.
+context:
+  version: "0.37.0"
+  # bpftrace 0.27 accepts LLVM 18-23 and bcc carries LLVM version guards up to
+  # 22, so both build against the same LLVM 20 line.
+  llvm: "20.1"
+  llvm_major: "20"
+
+package:
+  name: libbcc
+  version: ${{ version }}
+
+source:
+  git: https://github.com/iovisor/bcc.git
+  tag: v${{ version }}
+
+build:
+  # Bump this when the recipe changes: the hash in the build string only covers
+  # the variant, so an edited recipe otherwise reuses the previous file name.
+  number: 0
+  string: llvm${{ llvm_major }}_${{ hash }}
+  dynamic_linking:
+    # Fail instead of shipping libbcc.so with a library missing from run deps.
+    overlinking_behavior: error
+    overdepending_behavior: error
+  script:
+    file: build.sh
+    env:
+      # See ../../recipes/bpftrace: the cache has to live outside the build env,
+      # which rattler-build recreates on every run.
+      CCACHE_DIR: /tmp/bpftrace-conda-ccache
+  files:
+    - lib/libbcc.so*
+    - lib/libbcc.a
+    - lib/libbcc-loader-static.a
+    - lib/libbcc_bpf.so*
+    - lib/libbcc_bpf.a
+    - lib/pkgconfig/libbcc.pc
+    - include/bcc/**
+
+requirements:
+  build:
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - cmake
+    - ninja
+    - make
+    - pkg-config
+    - ccache
+    - git
+    # src/python is configured unconditionally and runs `python3 setup.py sdist`
+    # and `setup.py install`; both land in $PREFIX and are dropped by build.files.
+    - python
+    - setuptools
+  host:
+    - llvmdev ${{ llvm }}.*
+    - clangdev ${{ llvm }}.*
+    - libllvm${{ llvm_major }}
+    - libclang-cpp${{ llvm }}
+    - elfutils
+    - zlib
+    # libbcc compresses ELF sections with liblzma when it finds it. conda-forge
+    # splits that into liblzma (library) and liblzma-devel (lzma.h + .so).
+    - liblzma-devel
+    - liblzma
+  run:
+    - libllvm${{ llvm_major }}
+    - libclang-cpp${{ llvm }}
+    - elfutils
+    - liblzma
+
+tests:
+  - package_contents:
+      files:
+        - include/bcc/bcc_syms.h
+        - include/bcc/bcc_usdt.h
+        - lib/pkgconfig/libbcc.pc
+      strict: false
+  - script:
+      # The header and the two shared libraries bpftrace's FindLibBcc looks for.
+      - test -f "$PREFIX/include/bcc/bcc_syms.h"
+      - test -e "$PREFIX/lib/libbcc.so"
+      - test -e "$PREFIX/lib/libbcc_bpf.so"
+      - readelf -d "$PREFIX/lib/libbcc.so" | grep -q 'libLLVM' && echo "libbcc links shared LLVM"
+
+about:
+  homepage: https://github.com/iovisor/bcc
+  license: Apache-2.0
+  summary: BPF Compiler Collection - C/C++ library (libbcc, libbcc_bpf) and headers
+  repository: https://github.com/iovisor/bcc
+  documentation: https://github.com/iovisor/bcc/blob/master/docs/reference_guide.md
