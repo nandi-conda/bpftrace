@@ -33,9 +33,15 @@ Everything else comes from conda-forge — no further packaging is needed:
 | `elfutils` | `libelf` and `libdw`. |
 | `cereal` | Header-only, needed to parse the AST at build time. |
 | `libpcap` | `skb_output` probes. |
-| `binutils`, `zstd` | Static `libbfd`/`libopcodes` enable disassembly of the generated BPF (`HAVE_BFD_DISASM`); that link needs zstd. |
 | `liblzma`, `liblzma-devel` | bcc compresses ELF sections with liblzma when it can; conda-forge splits the header and `.so` into the `-devel` package. |
 | **`libbpf`** | **Not packaged.** It is a git submodule of both bcc and bpftrace; rattler-build checks submodules out, which is upstream's default build. |
+
+Disassembly of the generated BPF is deliberately switched off
+(`-DCMAKE_DISABLE_FIND_PACKAGE_LibBfd`). conda-forge's `binutils` ships
+`libbfd.a` and `libopcodes.a` but no `libiberty.a`, so bpftrace's configure probe
+of libbfd fails on some machines and succeeds on others; `HAVE_BFD_DISASM` only
+feeds the debug-build disassembler and `--info`, so turning it off keeps every
+build identical.
 
 ## Layout
 

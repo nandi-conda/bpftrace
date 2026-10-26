@@ -60,10 +60,6 @@ requirements:
     - cereal
     - libpcap
     - zlib
-    # libbfd/libopcodes enable disassembly of the generated BPF (HAVE_BFD_DISASM);
-    # they come from conda-forge's binutils and statically need libzstd.
-    - binutils
-    - zstd
   run:
     - libbcc ${{ bcc_version }}.*
     - libllvm${{ llvm_major }}
@@ -72,7 +68,6 @@ requirements:
     - libclang13
     - elfutils
     - libpcap
-    - zstd
 
 tests:
   # `bpftrace --version` only succeeds when every shared library the binary
